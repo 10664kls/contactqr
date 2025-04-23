@@ -159,7 +159,7 @@ const file_http_v1_status_proto_rawDesc = "" +
 	"\x04code\x18\x01 \x01(\x05R\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12(\n" +
 	"\x06status\x18\x04 \x01(\x0e2\x10.google.rpc.CodeR\x06status\x12.\n" +
-	"\adetails\x18\x05 \x03(\v2\x14.google.protobuf.AnyR\adetailsBAZ?github.com/10664kls/helpdesk-dashboad-api/genproto/go/http;httpb\x06proto3"
+	"\adetails\x18\x05 \x03(\v2\x14.google.protobuf.AnyR\adetailsB5Z3github.com/10664kls/contactqr/genproto/go/http;httpb\x06proto3"
 
 var (
 	file_http_v1_status_proto_rawDescOnce sync.Once
