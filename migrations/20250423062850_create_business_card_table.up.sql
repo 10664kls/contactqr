@@ -1,0 +1,21 @@
+CREATE TABLE dbo.business_card (
+  id VARCHAR(12) NOT NULL PRIMARY KEY,
+  employee_id INT NOT NULL,
+  display_name TEXT NOT NULL,
+  department TEXT NOT NULL,
+  job_title TEXT NOT NULL ,
+  company TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL,
+  mobile TEXT NOT NULL  DEFAULT '',
+  status VARCHAR(15) NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'PUBLISHED')),
+  remark TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL DEFAULT '',
+  updated_by TEXT NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE dbo.tb_employee
+  ADD phone_number TEXT NOT NULL DEFAULT '',
+      mobile_number TEXT NOT NULL DEFAULT '';
