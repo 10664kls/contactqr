@@ -12,6 +12,8 @@ import (
 	"time"
 
 	httpPb "github.com/10664kls/contactqr/genproto/go/http/v1"
+	"github.com/10664kls/contactqr/internal/employee"
+	"github.com/10664kls/contactqr/internal/server"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
 	stdmw "github.com/labstack/echo/v4/middleware"
@@ -63,20 +65,15 @@ func run() error {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(httpLogger(zlog))
-	e.Use(stdmws()...)
+	e.Use(stdMws()...)
 	e.HTTPErrorHandler = httpErr
 
-	e.GET("/", func(c echo.Context) error {
-		return c.String(http.StatusOK, "Hello, World!")
-	})
+	employeeService := must(employee.NewService(ctx, db, zlog))
 
-	e.GET("/error", func(c echo.Context) error {
-		return echo.ErrInternalServerError
-	})
-
-	e.GET("/try-error", func(c echo.Context) error {
-		return returnError()
-	})
+	server := must(server.NewServer(employeeService))
+	if err := server.Install(e); err != nil {
+		return fmt.Errorf("failed to install server: %w", err)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -122,7 +119,6 @@ func newLogger() (*zap.Logger, error) {
 		NameKey:        "logger",
 		CallerKey:      "caller",
 		MessageKey:     "message",
-		StacktraceKey:  "stacktrace",
 		LineEnding:     zapcore.DefaultLineEnding,
 		EncodeLevel:    zapcore.CapitalLevelEncoder,
 		EncodeTime:     zapcore.ISO8601TimeEncoder,
@@ -185,7 +181,7 @@ func httpErr(err error, c echo.Context) {
 	})
 }
 
-func stdmws() []echo.MiddlewareFunc {
+func stdMws() []echo.MiddlewareFunc {
 	return []echo.MiddlewareFunc{
 		stdmw.RemoveTrailingSlash(),
 		stdmw.Recover(),
