@@ -15,10 +15,10 @@ var ErrEmployeeNotFound = errors.New("employee not found")
 
 type EmployeeQuery struct {
 	ID            string    `json:"id" param:"id"`
-	Number        string    `json:"number" param:"number"`
-	Department    string    `json:"department" param:"department"`
-	JobTitle      string    `json:"jobTitle" param:"jobTitle"`
-	Company       string    `json:"company" param:"company"`
+	Code          string    `json:"code" param:"code"`
+	DepartmentID  string    `json:"departmentId" param:"departmentId"`
+	PositionID    string    `json:"positionId" param:"positionId"`
+	CompanyID     string    `json:"companyId" param:"companyId"`
 	CreatedBefore time.Time `json:"createdBefore" param:"createdBefore"`
 	CreatedAfter  time.Time `json:"createdAfter" param:"createdAfter"`
 	PageToken     string    `json:"pageToken" param:"pageToken"`
@@ -32,20 +32,20 @@ func (q *EmployeeQuery) ToSql() (string, []any, error) {
 		and = append(and, sq.Eq{"EID": q.ID})
 	}
 
-	if q.Number != "" {
-		and = append(and, sq.Eq{"EMPNO": q.Number})
+	if q.Code != "" {
+		and = append(and, sq.Eq{"EMPNO": q.Code})
 	}
 
-	if q.Department != "" {
-		and = append(and, sq.Eq{"Departname": q.Department})
+	if q.DepartmentID != "" {
+		and = append(and, sq.Eq{"depid": q.DepartmentID})
 	}
 
-	if q.JobTitle != "" {
-		and = append(and, sq.Eq{"Positionname": q.JobTitle})
+	if q.PositionID != "" {
+		and = append(and, sq.Eq{"poid": q.PositionID})
 	}
 
-	if q.Company != "" {
-		and = append(and, sq.Eq{"BranchName": q.Company})
+	if q.CompanyID != "" {
+		and = append(and, sq.Eq{"bid": q.CompanyID})
 	}
 	if !q.CreatedBefore.IsZero() {
 		and = append(and, sq.LtOrEq{"createdate": q.CreatedBefore})
@@ -76,12 +76,17 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 		Select(
 			id,
 			"EMPNO",
+			"bid",
 			"BranchName",
+			"depid",
 			"Departname",
+			"poid",
 			"Positionname",
-			"nameeng",
-			"surnameeng",
+			"CONCAT(nameeng, ' ', surnameeng) AS display_name",
 			"Emails",
+			"phone_number",
+			"mobile_number",
+			"approveby",
 			"createdate",
 		).
 		From("dbo.vm_employee").
@@ -101,13 +106,18 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 		var e Employee
 		if err := rows.Scan(
 			&e.ID,
-			&e.Number,
-			&e.Company,
-			&e.Department,
-			&e.JobTitle,
-			&e.FirstName,
-			&e.LastName,
-			&e.Contact.Email,
+			&e.Code,
+			&e.CompanyID,
+			&e.CompanyName,
+			&e.DepartmentID,
+			&e.DepartmentName,
+			&e.PositionID,
+			&e.PositionName,
+			&e.DisplayName,
+			&e.Email,
+			&e.Phone,
+			&e.Mobile,
+			&e.ManagerID,
 			&e.CreatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)

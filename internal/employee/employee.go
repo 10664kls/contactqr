@@ -77,21 +77,20 @@ func (s *Service) GetEmployeeByID(ctx context.Context, id string) (*Employee, er
 }
 
 type Employee struct {
-	ID         string    `json:"id"`
-	Number     string    `json:"number"`
-	FirstName  string    `json:"firstName"`
-	LastName   string    `json:"lastName"`
-	Department string    `json:"department"`
-	JobTitle   string    `json:"jobTitle"`
-	Company    string    `json:"company"`
-	Contact    Contact   `json:"contact"`
-	CreatedAt  time.Time `json:"createdAt"`
-}
-
-type Contact struct {
-	Email  string `json:"emailAddress"`
-	Phone  string `json:"phoneNumber"`
-	Mobile string `json:"mobileNumber"`
+	ID             string    `json:"id"`
+	ManagerID      string    `json:"managerId"`
+	Code           string    `json:"code"`
+	DisplayName    string    `json:"displayName"`
+	DepartmentID   string    `json:"departmentId"`
+	DepartmentName string    `json:"departmentName"`
+	PositionID     string    `json:"positionId"`
+	PositionName   string    `json:"positionName"`
+	CompanyID      string    `json:"companyId"`
+	CompanyName    string    `json:"companyName"`
+	Email          string    `json:"emailAddress"`
+	Phone          string    `json:"phoneNumber"`
+	Mobile         string    `json:"mobileNumber"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
 
 type ListEmployeesResult struct {
