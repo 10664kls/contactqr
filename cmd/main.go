@@ -11,8 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"aidanwoods.dev/go-paseto"
 	httpPb "github.com/10664kls/contactqr/genproto/go/http/v1"
+	"github.com/10664kls/contactqr/internal/auth"
+	"github.com/10664kls/contactqr/internal/card"
 	"github.com/10664kls/contactqr/internal/employee"
+	"github.com/10664kls/contactqr/internal/middleware"
 	"github.com/10664kls/contactqr/internal/server"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/labstack/echo/v4"
@@ -62,6 +66,9 @@ func run() error {
 		return fmt.Errorf("failed to ping DB: %w", err)
 	}
 
+	aKey := must(paseto.V4SymmetricKeyFromHex(os.Getenv("PASETO_ACCESS_KEY")))
+	rKey := must(paseto.V4SymmetricKeyFromHex(os.Getenv("PASETO_REFRESH_KEY")))
+
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(httpLogger(zlog))
@@ -69,9 +76,18 @@ func run() error {
 	e.HTTPErrorHandler = httpErr
 
 	employeeService := must(employee.NewService(ctx, db, zlog))
+	cardService := must(card.NewService(ctx, db, zlog))
+	authService := must(auth.NewAuth(ctx, db, aKey, rKey, zlog))
 
-	server := must(server.NewServer(employeeService))
-	if err := server.Install(e); err != nil {
+	mws := []echo.MiddlewareFunc{
+		middleware.PASETO(middleware.PASETOConfig{
+			SymmetricKey: aKey,
+		}),
+		middleware.SetContextClaimsFromToken,
+	}
+
+	server := must(server.NewServer(employeeService, cardService, authService))
+	if err := server.Install(e, mws...); err != nil {
 		return fmt.Errorf("failed to install server: %w", err)
 	}
 
