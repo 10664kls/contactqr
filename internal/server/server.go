@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/10664kls/contactqr/internal/auth"
+	"github.com/10664kls/contactqr/internal/card"
 	"github.com/10664kls/contactqr/internal/employee"
 	"github.com/labstack/echo/v4"
 	edPb "google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -13,15 +15,25 @@ import (
 
 type Server struct {
 	employee *employee.Service
+	card     *card.Service
+	auth     *auth.Auth
 }
 
-func NewServer(emp *employee.Service) (*Server, error) {
+func NewServer(emp *employee.Service, card *card.Service, auth *auth.Auth) (*Server, error) {
 	if emp == nil {
 		return nil, errors.New("employee service is nil")
+	}
+	if card == nil {
+		return nil, errors.New("card service is nil")
+	}
+	if auth == nil {
+		return nil, errors.New("auth service is nil")
 	}
 
 	return &Server{
 		employee: emp,
+		card:     card,
+		auth:     auth,
 	}, nil
 }
 
@@ -34,6 +46,7 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 
 	v1.GET("/employees", s.listEmployees)
 	v1.GET("/employees/:id", s.getEmployeeByID)
+	v1.POST("/cards", s.createCard)
 
 	return nil
 }
@@ -72,5 +85,22 @@ func (s *Server) getEmployeeByID(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, echo.Map{
 		"employee": employee,
+	})
+}
+
+func (s *Server) createCard(c echo.Context) error {
+	req := new(card.CardReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	ctx := c.Request().Context()
+	card, err := s.card.CreateCard(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"card": card,
 	})
 }
