@@ -1,10 +1,11 @@
 CREATE TABLE dbo.business_card (
   id VARCHAR(12) NOT NULL PRIMARY KEY,
+  approval_id INT NOT NULL,
   employee_id INT NOT NULL,
+  department_id INT NOT NULL,
+  position_id INT NOT NULL,
+  company_id INT NOT NULL,
   display_name TEXT NOT NULL,
-  department TEXT NOT NULL,
-  job_title TEXT NOT NULL ,
-  company TEXT NOT NULL,
   email TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL,
   mobile TEXT NOT NULL  DEFAULT '',
@@ -15,6 +16,13 @@ CREATE TABLE dbo.business_card (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE dbo.business_card
+  ADD CONSTRAINT fk_employee_id FOREIGN KEY (employee_id) REFERENCES dbo.tb_employee(EID),
+      CONSTRAINT fk_company_id FOREIGN KEY (company_id) REFERENCES dbo.tb_Branch(BID),
+      CONSTRAINT fk_department_id FOREIGN KEY (department_id) REFERENCES dbo.tb_department(DEPID),
+      CONSTRAINT fk_position_id FOREIGN KEY (position_id) REFERENCES dbo.tb_position(POID),
+      CONSTRAINT fk_approval_id FOREIGN KEY (approval_id) REFERENCES dbo.tb_employee(EID);
 
 ALTER TABLE dbo.tb_employee
   ADD phone_number TEXT NOT NULL DEFAULT '',
