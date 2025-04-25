@@ -14,21 +14,22 @@ import (
 var ErrEmployeeNotFound = errors.New("employee not found")
 
 type EmployeeQuery struct {
-	ID            string    `json:"id" param:"id"`
-	Code          string    `json:"code" param:"code"`
-	DepartmentID  string    `json:"departmentId" param:"departmentId"`
-	PositionID    string    `json:"positionId" param:"positionId"`
-	CompanyID     string    `json:"companyId" param:"companyId"`
-	CreatedBefore time.Time `json:"createdBefore" param:"createdBefore"`
-	CreatedAfter  time.Time `json:"createdAfter" param:"createdAfter"`
-	PageToken     string    `json:"pageToken" param:"pageToken"`
-	PageSize      uint64    `json:"pageSize" param:"pageSize"`
+	ID            int64     `json:"id" param:"id" query:"id"`
+	DepartmentID  int64     `json:"departmentId" query:"departmentId"`
+	PositionID    int64     `json:"positionId" query:"positionId"`
+	CompanyID     int64     `json:"companyId" query:"companyId"`
+	ManagerID     int64     `json:"managerId" query:"managerId"`
+	Code          string    `json:"code" query:"code"`
+	CreatedBefore time.Time `json:"createdBefore" query:"createdBefore"`
+	CreatedAfter  time.Time `json:"createdAfter" query:"createdAfter"`
+	PageToken     string    `json:"pageToken" query:"pageToken"`
+	PageSize      uint64    `json:"pageSize" query:"pageSize"`
 }
 
 func (q *EmployeeQuery) ToSql() (string, []any, error) {
 	and := sq.And{}
 
-	if q.ID != "" {
+	if q.ID > 0 {
 		and = append(and, sq.Eq{"EID": q.ID})
 	}
 
@@ -36,17 +37,22 @@ func (q *EmployeeQuery) ToSql() (string, []any, error) {
 		and = append(and, sq.Eq{"EMPNO": q.Code})
 	}
 
-	if q.DepartmentID != "" {
+	if q.DepartmentID > 0 {
 		and = append(and, sq.Eq{"depid": q.DepartmentID})
 	}
 
-	if q.PositionID != "" {
+	if q.PositionID > 0 {
 		and = append(and, sq.Eq{"poid": q.PositionID})
 	}
 
-	if q.CompanyID != "" {
+	if q.CompanyID > 0 {
 		and = append(and, sq.Eq{"bid": q.CompanyID})
 	}
+
+	if q.ManagerID > 0 {
+		and = append(and, sq.Eq{"approveby": q.ManagerID})
+	}
+
 	if !q.CreatedBefore.IsZero() {
 		and = append(and, sq.LtOrEq{"createdate": q.CreatedBefore})
 	}
@@ -134,7 +140,7 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 
 func getEmployee(ctx context.Context, db *sql.DB, in *EmployeeQuery) (*Employee, error) {
 	in.PageSize = 1
-	if in.ID == "" {
+	if in.ID <= 0 {
 		return nil, ErrEmployeeNotFound
 	}
 
