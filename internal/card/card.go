@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"net/mail"
 	"strings"
 	"time"
 
+	"github.com/10664kls/contactqr/internal/auth"
+	"github.com/10664kls/contactqr/internal/employee"
+	"github.com/10664kls/contactqr/internal/pager"
 	"github.com/google/uuid"
 	e164 "github.com/nyaruka/phonenumbers"
 	"go.uber.org/zap"
@@ -17,11 +19,12 @@ import (
 )
 
 type Service struct {
-	db   *sql.DB
-	zlog *zap.Logger
+	employee *employee.Service
+	db       *sql.DB
+	zlog     *zap.Logger
 }
 
-func NewService(_ context.Context, db *sql.DB, zlog *zap.Logger) (*Service, error) {
+func NewService(_ context.Context, db *sql.DB, zlog *zap.Logger, employee *employee.Service) (*Service, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
@@ -29,23 +32,38 @@ func NewService(_ context.Context, db *sql.DB, zlog *zap.Logger) (*Service, erro
 		return nil, errors.New("zlog is nil")
 	}
 
+	if employee == nil {
+		return nil, errors.New("employee is nil")
+	}
+
 	return &Service{
-		db:   db,
-		zlog: zlog,
+		db:       db,
+		zlog:     zlog,
+		employee: employee,
 	}, nil
 }
 
-func (s *Service) CreateCard(ctx context.Context, in *CardReq) (*Card, error) {
+func (s *Service) CreateBusinessCard(ctx context.Context, in *CardReq) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
 	zlog := s.zlog.With(
-		zap.String("method", "CreateCard"),
+		zap.String("method", "CreateBusinessCard"),
 		zap.Any("req", in),
+		zap.String("username", claims.Code),
 	)
 
 	if err := in.Validate(); err != nil {
 		return nil, err
 	}
 
-	card := newCard(in)
+	employee, err := s.employee.GetEmployeeByID(ctx, claims.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	employee.SetPhone(in.Phone.Number)
+	employee.SetMobile(in.Mobile.Number)
+	card := newCardFromEmployee(employee)
 	if err := createCard(ctx, s.db, card); err != nil {
 		zlog.Error("failed to create card", zap.Error(err))
 		return nil, err
@@ -53,16 +71,209 @@ func (s *Service) CreateCard(ctx context.Context, in *CardReq) (*Card, error) {
 	return card, nil
 }
 
-type CardReq struct {
-	DisplayName string      `json:"displayName"`
-	Department  string      `json:"department"`
-	JobTitle    string      `json:"jobTitle"`
-	Company     string      `json:"company"`
-	Email       string      `json:"emailAddress"`
-	Phone       PhoneNumber `json:"phone"`
-	Mobile      PhoneNumber `json:"mobile"`
+func (s *Service) UpdateBusinessCard(ctx context.Context, in *CardReq) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
 
-	employeeID string
+	zlog := s.zlog.With(
+		zap.String("method", "UpdateBusinessCard"),
+		zap.Any("req", in),
+		zap.String("username", claims.Code),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	employee, err := s.employee.GetEmployeeByID(ctx, claims.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		EmployeeID: employee.ID,
+		ID:         in.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	employee.SetPhone(in.Phone.Number)
+	employee.SetMobile(in.Mobile.Number)
+	card.UpdateFromEmployee(employee)
+	if err := updateCard(ctx, s.db, card); err != nil {
+		zlog.Error("failed to update card", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
+type ListCardsResult struct {
+	Cards         []*Card `json:"cards"`
+	NextPageToken string  `json:"nextPageToken"`
+}
+
+func (s *Service) ListBusinessCards(ctx context.Context, req *CardQuery) (*ListCardsResult, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "ListBusinessCards"),
+		zap.Any("req", req),
+		zap.String("username", claims.Code),
+	)
+
+	if !claims.IsHR {
+		return nil, rpcStatus.Error(
+			codes.PermissionDenied,
+			"You are not allowed to access theses business cards.",
+		)
+	}
+
+	cards, err := listCards(ctx, s.db, req)
+	if err != nil {
+		zlog.Error("failed to list business cards", zap.Error(err))
+		return nil, err
+	}
+
+	var pageToken string
+	if l := len(cards); l > 0 && l == int(pager.Size(req.PageSize)) {
+		last := cards[l-1]
+		pageToken = pager.EncodeCursor(&pager.Cursor{
+			ID:   last.ID,
+			Time: last.CreatedAt,
+		})
+	}
+
+	return &ListCardsResult{
+		Cards:         cards,
+		NextPageToken: pageToken,
+	}, nil
+}
+
+func (s *Service) GetBusinessCardByID(ctx context.Context, id string) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "GetBusinessCardByID"),
+		zap.String("username", claims.Code),
+		zap.String("id", id),
+	)
+
+	if !claims.IsHR {
+		return nil, rpcStatus.Error(
+			codes.PermissionDenied,
+			"You are not allowed to access this card or (it may not exist)",
+		)
+	}
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID: id,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
+func (s *Service) GetMyBusinessCardByID(ctx context.Context, id string) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "GetMyBusinessCardByID"),
+		zap.String("username", claims.Code),
+		zap.String("id", id),
+	)
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID:         id,
+		EmployeeID: claims.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
+func (s *Service) ListMyApprovalBusinessCards(ctx context.Context, req *CardQuery) (*ListCardsResult, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "ListMyApprovalBusinessCards"),
+		zap.Any("req", req),
+		zap.String("username", claims.Code),
+	)
+
+	req.managerID = claims.ID
+	cards, err := listCards(ctx, s.db, req)
+	if err != nil {
+		zlog.Error("failed to list cards", zap.Error(err))
+		return nil, err
+	}
+
+	var pageToken string
+	if l := len(cards); l > 0 && l == int(pager.Size(req.PageSize)) {
+		last := cards[l-1]
+		pageToken = pager.EncodeCursor(&pager.Cursor{
+			ID:   last.ID,
+			Time: last.CreatedAt,
+		})
+	}
+
+	return &ListCardsResult{
+		Cards:         cards,
+		NextPageToken: pageToken,
+	}, nil
+}
+
+func (s *Service) ListMyBusinessCards(ctx context.Context, req *CardQuery) (*ListCardsResult, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "ListMyBusinessCards"),
+		zap.Any("req", req),
+		zap.String("username", claims.Code),
+	)
+
+	req.EmployeeID = claims.ID
+	cards, err := listCards(ctx, s.db, req)
+	if err != nil {
+		zlog.Error("failed to list cards", zap.Error(err))
+		return nil, err
+	}
+
+	var pageToken string
+	if l := len(cards); l > 0 && l == int(pager.Size(req.PageSize)) {
+		last := cards[l-1]
+		pageToken = pager.EncodeCursor(&pager.Cursor{
+			ID:   last.ID,
+			Time: last.CreatedAt,
+		})
+	}
+
+	return &ListCardsResult{
+		Cards:         cards,
+		NextPageToken: pageToken,
+	}, nil
+}
+
+type CardReq struct {
+	ID     string      `json:"-" param:"id"`
+	Phone  PhoneNumber `json:"phone"`
+	Mobile PhoneNumber `json:"mobile"`
 }
 
 type PhoneNumber struct {
@@ -75,52 +286,6 @@ type PhoneNumber struct {
 
 func (r *CardReq) Validate() error {
 	violations := make([]*edPb.BadRequest_FieldViolation, 0)
-
-	r.DisplayName = strings.TrimSpace(r.DisplayName)
-	if r.DisplayName == "" {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "displayName",
-			Description: "displayName must not be empty",
-		})
-	}
-
-	r.Department = strings.TrimSpace(r.Department)
-	if r.Department == "" {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "department",
-			Description: "department must not be empty",
-		})
-	}
-
-	r.JobTitle = strings.TrimSpace(r.JobTitle)
-	if r.JobTitle == "" {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "jobTitle",
-			Description: "jobTitle must not be empty",
-		})
-	}
-
-	r.Company = strings.TrimSpace(r.Company)
-	if r.Company == "" {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "company",
-			Description: "company must not be empty",
-		})
-	}
-
-	r.Email = strings.TrimSpace(r.Email)
-	if r.Email == "" {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "emailAddress",
-			Description: "emailAddress must not be empty",
-		})
-	}
-	if _, err := mail.ParseAddress(r.Email); err != nil {
-		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "emailAddress",
-			Description: "emailAddress must be a valid email address",
-		})
-	}
 
 	r.Phone.Number = strings.TrimSpace(r.Phone.Number)
 	r.Mobile.Number = strings.TrimSpace(r.Mobile.Number)
@@ -193,19 +358,23 @@ func (r *CardReq) Validate() error {
 }
 
 type Card struct {
-	ID           string    `json:"id"`
-	EmployeeID   string    `json:"employeeId"`
-	DisplayName  string    `json:"displayName"`
-	Department   string    `json:"department"`
-	JobTitle     string    `json:"jobTitle"`
-	Company      string    `json:"company"`
-	Email        string    `json:"emailAddress"`
-	PhoneNumber  string    `json:"phoneNumber"`
-	MobileNumber string    `json:"mobileNumber"`
-	Remark       string    `json:"remark"`
-	Status       status    `json:"status"` // PENDING, APPROVED, REJECTED, PUBLISHED. Default: PENDING.
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	EmployeeID     int64     `json:"employeeId"`
+	DepartmentID   int64     `json:"departmentId"`
+	PositionID     int64     `json:"positionId"`
+	CompanyID      int64     `json:"companyId"`
+	ID             string    `json:"id"`
+	EmployeeCode   string    `json:"employeeCode"`
+	DisplayName    string    `json:"displayName"`
+	Email          string    `json:"emailAddress"`
+	PhoneNumber    string    `json:"phoneNumber"`
+	MobileNumber   string    `json:"mobileNumber"`
+	PositionName   string    `json:"positionName"`
+	DepartmentName string    `json:"departmentName"`
+	CompanyName    string    `json:"companyName"`
+	Remark         string    `json:"remark"`
+	Status         status    `json:"status"` // PENDING, APPROVED, REJECTED, PUBLISHED. Default: PENDING.
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 
 	createdBy string
 	updatedBy string
@@ -271,7 +440,7 @@ func (c *Card) Published(by string) error {
 	return nil
 }
 
-func (c *Card) Update(in *CardReq) error {
+func (c *Card) UpdateFromEmployee(in *employee.Employee) error {
 	switch c.Status {
 	case StatusPublished:
 		return rpcStatus.Error(codes.FailedPrecondition, "Card is in published status. Only pending and rejected status can be updated.")
@@ -281,37 +450,45 @@ func (c *Card) Update(in *CardReq) error {
 
 	}
 
+	c.EmployeeCode = in.Code
 	c.DisplayName = in.DisplayName
-	c.PhoneNumber = in.Phone.Number
-	c.MobileNumber = in.Mobile.Number
+	c.PhoneNumber = in.Phone
+	c.MobileNumber = in.Mobile
 	c.Email = in.Email
-	c.JobTitle = in.JobTitle
-	c.Department = in.Department
-	c.Company = in.Company
+	c.PositionID = in.PositionID
+	c.PositionName = in.PositionName
+	c.DepartmentID = in.DepartmentID
+	c.DepartmentName = in.DepartmentName
+	c.CompanyID = in.CompanyID
+	c.CompanyName = in.CompanyName
 	c.Status = StatusPending
+	c.updatedBy = in.Code
 	c.UpdatedAt = time.Now()
-	c.updatedBy = c.EmployeeID
 
 	return nil
 }
 
-func newCard(in *CardReq) *Card {
+func newCardFromEmployee(e *employee.Employee) *Card {
 	c := new(Card)
 	now := time.Now()
 	id := uuid.NewString()
 
 	c.ID = strings.ToUpper(strings.Split(id, "-")[4])
-	c.EmployeeID = in.employeeID
-	c.DisplayName = in.DisplayName
-	c.JobTitle = in.JobTitle
-	c.Department = in.Department
-	c.Company = in.Company
-	c.Email = in.Email
-	c.PhoneNumber = in.Phone.Number
-	c.MobileNumber = in.Mobile.Number
+	c.EmployeeID = e.ID
+	c.EmployeeCode = e.Code
+	c.DisplayName = e.DisplayName
+	c.PositionID = e.PositionID
+	c.PositionName = e.PositionName
+	c.DepartmentID = e.DepartmentID
+	c.DepartmentName = e.DepartmentName
+	c.CompanyID = e.CompanyID
+	c.CompanyName = e.CompanyName
+	c.Email = e.Email
+	c.PhoneNumber = e.Phone
+	c.MobileNumber = e.Mobile
 	c.Status = StatusPending
-	c.createdBy = in.employeeID
-	c.updatedBy = in.employeeID
+	c.createdBy = e.Code
+	c.updatedBy = e.Code
 	c.CreatedAt = now
 	c.UpdatedAt = now
 

@@ -1,6 +1,7 @@
 package card
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"strconv"
 )
@@ -70,6 +71,10 @@ func (s *status) Scan(src any) error {
 	}
 
 	return nil
+}
+
+func (s status) Value() (driver.Value, error) {
+	return s.String(), nil
 }
 
 func (s status) String() string {
