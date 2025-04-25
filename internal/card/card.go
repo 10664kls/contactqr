@@ -239,6 +239,30 @@ func (s *Service) ListMyApprovalBusinessCards(ctx context.Context, req *CardQuer
 	}, nil
 }
 
+func (s *Service) GetMyApprovalBusinessCardByID(ctx context.Context, id string) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "GetMyApprovalBusinessCardByID"),
+		zap.String("username", claims.Code),
+		zap.String("id", id),
+	)
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID:        id,
+		managerID: claims.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
 func (s *Service) ListMyBusinessCards(ctx context.Context, req *CardQuery) (*ListCardsResult, error) {
 	claims := auth.ClaimsFromContext(ctx)
 
@@ -268,6 +292,210 @@ func (s *Service) ListMyBusinessCards(ctx context.Context, req *CardQuery) (*Lis
 		Cards:         cards,
 		NextPageToken: pageToken,
 	}, nil
+}
+
+type ApproveBusinessCardReq struct {
+	ID string `json:"cardId" param:"id"`
+}
+
+func (r *ApproveBusinessCardReq) Validate() error {
+	violations := make([]*edPb.BadRequest_FieldViolation, 0)
+
+	r.ID = strings.TrimSpace(r.ID)
+	if r.ID == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "cardId",
+			Description: "cardId must not be empty",
+		})
+	}
+
+	if len(violations) > 0 {
+		s, _ := rpcStatus.New(
+			codes.InvalidArgument,
+			"Your approval business card is not valid or incomplete. Please check the errors and try again, see details for more information.",
+		).WithDetails(&edPb.BadRequest{FieldViolations: violations})
+		return s.Err()
+	}
+
+	return nil
+}
+
+func (s *Service) ApproveBusinessCard(ctx context.Context, in *ApproveBusinessCardReq) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "ApproveBusinessCard"),
+		zap.String("username", claims.Code),
+		zap.String("req", in.ID),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID:        in.ID,
+		managerID: claims.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	if err := card.Approved(claims.Code); err != nil {
+		return nil, err
+	}
+
+	if err := updateCard(ctx, s.db, card); err != nil {
+		zlog.Error("failed to update card", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
+type RejectBusinessCardReq struct {
+	Remark string `json:"remark"`
+	ID     string `json:"cardId" param:"id"`
+}
+
+func (r *RejectBusinessCardReq) Validate() error {
+	violations := make([]*edPb.BadRequest_FieldViolation, 0)
+
+	r.ID = strings.TrimSpace(r.ID)
+	if r.ID == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "cardId",
+			Description: "cardId must not be empty",
+		})
+	}
+
+	r.Remark = strings.TrimSpace(r.Remark)
+	if r.Remark == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "remark",
+			Description: "remark must not be empty",
+		})
+	}
+
+	if len(violations) > 0 {
+		s, _ := rpcStatus.New(
+			codes.InvalidArgument,
+			"Your reject business card is not valid or incomplete. Please check the errors and try again, see details for more information.",
+		).WithDetails(&edPb.BadRequest{FieldViolations: violations})
+		return s.Err()
+	}
+
+	return nil
+}
+
+func (s *Service) RejectBusinessCard(ctx context.Context, in *RejectBusinessCardReq) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "RejectBusinessCard"),
+		zap.String("username", claims.Code),
+		zap.Any("req", in),
+	)
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID:        in.ID,
+		managerID: claims.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	if err := card.Rejected(claims.Code, in.Remark); err != nil {
+		return nil, err
+	}
+
+	if err := updateCard(ctx, s.db, card); err != nil {
+		zlog.Error("failed to update card", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
+}
+
+type PublishBusinessCardReq struct {
+	ID string `json:"cardId" param:"id"`
+}
+
+func (r *PublishBusinessCardReq) Validate() error {
+	violations := make([]*edPb.BadRequest_FieldViolation, 0)
+
+	r.ID = strings.TrimSpace(r.ID)
+	if r.ID == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "cardId",
+			Description: "cardId must not be empty",
+		})
+	}
+
+	if len(violations) > 0 {
+		s, _ := rpcStatus.New(
+			codes.InvalidArgument,
+			"Your publish business card is not valid or incomplete. Please check the errors and try again, see details for more information.",
+		).WithDetails(&edPb.BadRequest{FieldViolations: violations})
+		return s.Err()
+	}
+
+	return nil
+}
+
+func (s *Service) PublishBusinessCard(ctx context.Context, in *PublishBusinessCardReq) (*Card, error) {
+	claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "PublishBusinessCard"),
+		zap.String("username", claims.Code),
+		zap.Any("req", in),
+	)
+
+	if !claims.IsHR {
+		return nil, rpcStatus.Error(
+			codes.PermissionDenied,
+			"You are not allowed to access this card or (it may not exist)",
+		)
+	}
+
+	if err := in.Validate(); err != nil {
+		return nil, err
+	}
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID: in.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	if err := card.Published(claims.Code); err != nil {
+		return nil, err
+	}
+
+	if err := updateCard(ctx, s.db, card); err != nil {
+		zlog.Error("failed to update card", zap.Error(err))
+		return nil, err
+	}
+
+	return card, nil
 }
 
 type CardReq struct {
@@ -386,10 +614,10 @@ func (c *Card) Approved(by string) error {
 		return nil
 
 	case StatusRejected:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in rejected status. Only pending status can be approved.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in REJECTED status. Only PENDING status can be APPROVED.")
 
 	case StatusPublished:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in published status. Only pending status can be approved.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in PUBLISHED status. Only PENDING status can be APPROVED.")
 
 	}
 
@@ -406,10 +634,10 @@ func (c *Card) Rejected(by, remark string) error {
 		return nil
 
 	case StatusApproved:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in approved status. Only pending status can be rejected.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in APPROVED status. Only PENDING status can be REJECTED.")
 
 	case StatusPublished:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in published status. Only pending status can be rejected.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in PUBLISHED status. Only PENDING status can be REJECTED.")
 	}
 
 	c.Status = StatusRejected
@@ -426,10 +654,10 @@ func (c *Card) Published(by string) error {
 		return nil
 
 	case StatusPending:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in pending status. Only approved status can be published.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in PENDING status. Only APPROVED status can be PUBLISHED.")
 
 	case StatusRejected:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in rejected status. Only approved status can be published.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in REJECTED status. Only APPROVED status can be PUBLISHED.")
 
 	}
 
@@ -443,10 +671,10 @@ func (c *Card) Published(by string) error {
 func (c *Card) UpdateFromEmployee(in *employee.Employee) error {
 	switch c.Status {
 	case StatusPublished:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in published status. Only pending and rejected status can be updated.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in PUBLISHED status. Only PENDING and REJECTED status can be updated.")
 
 	case StatusApproved:
-		return rpcStatus.Error(codes.FailedPrecondition, "Card is in approved status. Only pending and rejected status can be updated.")
+		return rpcStatus.Error(codes.FailedPrecondition, "Card is in APPROVED status. Only PENDING and REJECTED status can be updated.")
 
 	}
 

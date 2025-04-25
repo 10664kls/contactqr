@@ -55,9 +55,14 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.PUT("/business-cards/:id", s.updateBusinessCard, mws...)
 	v1.GET("/business-cards/me", s.listMyBusinessCards, mws...)
 	v1.GET("/business-cards/me/approval", s.listMyApprovalBusinessCards, mws...)
+	v1.GET("/business-cards/me/approval/:id", s.getMyApprovalBusinessCardByID, mws...)
 	v1.GET("/business-cards/me/:id", s.getMyBusinessCardByID, mws...)
 	v1.GET("/business-cards", s.listBusinessCards, mws...)
 	v1.GET("/business-cards/:id", s.getBusinessCardByID, mws...)
+
+	v1.POST("/business-cards/approve", s.approveBusinessCard, mws...)
+	v1.POST("/business-cards/reject", s.rejectBusinessCard, mws...)
+	v1.POST("/business-cards/publish", s.publishBusinessCard, mws...)
 
 	return nil
 }
@@ -276,5 +281,73 @@ func (s *Server) authProfile(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{
 		"profile": profile,
+	})
+}
+
+func (s *Server) approveBusinessCard(c echo.Context) error {
+	req := new(card.ApproveBusinessCardReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	ctx := c.Request().Context()
+	card, err := s.card.ApproveBusinessCard(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"card": card,
+	})
+}
+
+func (s *Server) rejectBusinessCard(c echo.Context) error {
+	req := new(card.RejectBusinessCardReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	ctx := c.Request().Context()
+	card, err := s.card.RejectBusinessCard(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"card": card,
+	})
+}
+
+func (s *Server) publishBusinessCard(c echo.Context) error {
+	req := new(card.PublishBusinessCardReq)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	ctx := c.Request().Context()
+	card, err := s.card.PublishBusinessCard(ctx, req)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"card": card,
+	})
+}
+
+func (s *Server) getMyApprovalBusinessCardByID(c echo.Context) error {
+	req := new(card.CardQuery)
+	if err := c.Bind(req); err != nil {
+		return badJSON()
+	}
+
+	ctx := c.Request().Context()
+	card, err := s.card.GetMyApprovalBusinessCardByID(ctx, req.ID)
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{
+		"card": card,
 	})
 }
