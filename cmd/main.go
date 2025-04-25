@@ -253,7 +253,7 @@ func httpLogger(zlog *zap.Logger) echo.MiddlewareFunc {
 				zlog.With(zap.Error(err)).Error("HTTP Error", fields...)
 
 			case n >= 400:
-				zlog.With(zap.Error(err)).Warn("Client Error", fields...)
+				zlog.With(zap.Error(err)).Warn("HTTP Error", fields...)
 
 			case n >= 300:
 				zlog.Info("Redirection", fields...)
