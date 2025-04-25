@@ -202,6 +202,7 @@ func (s *Auth) genToken(u *User) (*Token, error) {
 		Email:        u.email,
 		Phone:        u.phone,
 		Mobile:       u.mobile,
+		IsHR:         u.isHR,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to set claims: %w", err)
 	}
@@ -218,16 +219,17 @@ func (s *Auth) genToken(u *User) (*Token, error) {
 }
 
 type Claims struct {
-	ID           string `json:"id"`
+	ID           int64  `json:"id"`
+	ManagerID    int64  `json:"managerId"`
+	PositionID   int64  `json:"positionId"`
+	DepartmentID int64  `json:"departmentId"`
+	CompanyID    int64  `json:"companyId"`
 	Code         string `json:"code"`
 	DisplayName  string `json:"displayName"`
-	ManagerID    string `json:"managerId"`
-	PositionID   string `json:"positionId"`
-	DepartmentID string `json:"departmentId"`
-	CompanyID    string `json:"companyId"`
 	Email        string `json:"emailAddress"`
 	Phone        string `json:"phoneNumber"`
 	Mobile       string `json:"mobileNumber"`
+	IsHR         bool   `json:"isHR"`
 }
 
 type ctxKey int
@@ -249,18 +251,20 @@ func ContextWithClaims(ctx context.Context, claims *Claims) context.Context {
 }
 
 type User struct {
-	ID          string `json:"id"`
+	isHR         bool
+	ID           int64 `json:"id"`
+	managerID    int64
+	positionID   int64
+	departmentID int64
+	companyID    int64
+
 	Code        string `json:"code"`
 	DisplayName string `json:"displayName"`
 
-	managerID    string
-	positionID   string
-	departmentID string
-	companyID    string
-	email        string
-	phone        string
-	mobile       string
-	password     string
+	email    string
+	phone    string
+	mobile   string
+	password string
 }
 
 func (u *User) Compare(password string) (bool, error) {
@@ -286,6 +290,7 @@ func getUserByUsername(ctx context.Context, db *sql.DB, username string) (*User,
 			"e.phone_number",
 			"e.mobile_number",
 			"u.tokenkey",
+			`CASE WHEN u.hrkey IN (0,1) THEN 1 ELSE 0 END AS hr`,
 		).
 		From("dbo.tb_userlogin AS u").
 		InnerJoin("dbo.vm_employee AS e ON u.eid = e.EID").
@@ -312,6 +317,7 @@ func getUserByUsername(ctx context.Context, db *sql.DB, username string) (*User,
 		&u.phone,
 		&u.mobile,
 		&u.password,
+		&u.isHR,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
