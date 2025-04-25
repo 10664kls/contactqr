@@ -76,7 +76,7 @@ func run() error {
 	e.HTTPErrorHandler = httpErr
 
 	employeeService := must(employee.NewService(ctx, db, zlog))
-	cardService := must(card.NewService(ctx, db, zlog))
+	cardService := must(card.NewService(ctx, db, zlog, employeeService))
 	authService := must(auth.NewAuth(ctx, db, aKey, rKey, zlog))
 
 	mws := []echo.MiddlewareFunc{
@@ -171,7 +171,8 @@ func httpErr(err error, c echo.Context) {
 	if he, ok := err.(*echo.HTTPError); ok {
 		var s *status.Status
 		switch he.Code {
-		case http.StatusNotFound:
+		case http.StatusNotFound,
+			http.StatusMethodNotAllowed:
 			s = status.New(codes.NotFound, "Not found!")
 
 		case http.StatusTooManyRequests:
@@ -225,7 +226,6 @@ func stdMws() []echo.MiddlewareFunc {
 func httpLogger(zlog *zap.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			start := time.Now()
 			err := next(c)
 			if err != nil {
 				c.Error(err)
@@ -236,11 +236,9 @@ func httpLogger(zlog *zap.Logger) echo.MiddlewareFunc {
 
 			fields := []zapcore.Field{
 				zap.String("remote_ip", c.RealIP()),
-				zap.String("latency", time.Since(start).String()),
 				zap.String("host", req.Host),
 				zap.String("request", fmt.Sprintf("%s %s", req.Method, req.RequestURI)),
 				zap.Int("status", res.Status),
-				zap.Int64("size", res.Size),
 				zap.String("user_agent", req.UserAgent()),
 			}
 
