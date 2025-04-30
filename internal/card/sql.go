@@ -20,9 +20,10 @@ type CardQuery struct {
 	PositionID    int64     `json:"positionId" query:"positionId"`
 	DepartmentID  int64     `json:"departmentId" query:"departmentId"`
 	CompanyID     int64     `json:"companyId" query:"companyId"`
+	EmployeeCode  string    `json:"employeeCode" query:"employeeCode"`
 	ID            string    `json:"id" param:"id" query:"id"`
 	DisplayName   string    `json:"displayName" query:"displayName"`
-	Status        status    `json:"status" query:"status"`
+	Status        string    `json:"status" query:"status"`
 	CreatedAfter  time.Time `json:"createdAfter" query:"createdAfter"`
 	CreatedBefore time.Time `json:"createdBefore" query:"createdBefore"`
 	PageToken     string    `json:"pageToken" query:"pageToken"`
@@ -38,6 +39,10 @@ func (q *CardQuery) ToSql() (string, []any, error) {
 
 	if q.EmployeeID > 0 {
 		and = append(and, sq.Eq{"employee_id": q.EmployeeID})
+	}
+
+	if q.EmployeeCode != "" {
+		and = append(and, sq.Expr("employee_code LIKE ?", "%"+q.EmployeeCode+"%"))
 	}
 
 	if q.DisplayName != "" {
@@ -56,7 +61,7 @@ func (q *CardQuery) ToSql() (string, []any, error) {
 		and = append(and, sq.Eq{"company_id": q.CompanyID})
 	}
 
-	if q.Status != StatusUnspecified {
+	if q.Status != "" {
 		and = append(and, sq.Eq{"status": q.Status})
 	}
 

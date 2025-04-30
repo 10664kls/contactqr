@@ -3,6 +3,7 @@ package card
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"time"
@@ -56,7 +57,7 @@ func (s *Service) CreateBusinessCard(ctx context.Context, in *CardReq) (*Card, e
 		return nil, err
 	}
 
-	employee, err := s.employee.GetEmployeeByID(ctx, claims.ID)
+	employee, err := s.employee.GetMyEmployeeProfile(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (s *Service) UpdateBusinessCard(ctx context.Context, in *CardReq) (*Card, e
 		return nil, err
 	}
 
-	employee, err := s.employee.GetEmployeeByID(ctx, claims.ID)
+	employee, err := s.employee.GetMyEmployeeProfile(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +114,7 @@ func (s *Service) UpdateBusinessCard(ctx context.Context, in *CardReq) (*Card, e
 }
 
 type ListCardsResult struct {
-	Cards         []*Card `json:"cards"`
+	Cards         []*Card `json:"businessCards"`
 	NextPageToken string  `json:"nextPageToken"`
 }
 
@@ -516,38 +517,35 @@ func (r *CardReq) Validate() error {
 	violations := make([]*edPb.BadRequest_FieldViolation, 0)
 
 	r.Phone.Number = strings.TrimSpace(r.Phone.Number)
-	r.Mobile.Number = strings.TrimSpace(r.Mobile.Number)
-	if r.Phone.Number == "" && r.Mobile.Number == "" {
+	if r.Phone.Number == "" {
 		violations = append(violations, &edPb.BadRequest_FieldViolation{
-			Field:       "phoneNumber and mobileNumber",
-			Description: "phoneNumber and mobileNumber both must not be empty. At least one of them must not be empty",
+			Field:       "phone.number",
+			Description: "phone number must not be empty",
 		})
 	}
 
-	if r.Phone.Number != "" {
-		r.Phone.Country = strings.TrimSpace(r.Phone.Country)
-		if r.Phone.Country == "" {
-			violations = append(violations, &edPb.BadRequest_FieldViolation{
-				Field:       "phone.country",
-				Description: "phone country must not be empty",
-			})
-		}
-
-		phone, err := e164.Parse(r.Phone.Number, r.Phone.Country)
-		if err != nil {
-			violations = append(violations, &edPb.BadRequest_FieldViolation{
-				Field:       "phone.number",
-				Description: "phone number must be a valid number",
-			})
-		}
-		if !e164.IsValidNumber(phone) {
-			violations = append(violations, &edPb.BadRequest_FieldViolation{
-				Field:       "phone.number",
-				Description: "phone number must be a valid number",
-			})
-		}
-		r.Phone.Number = e164.Format(phone, e164.INTERNATIONAL)
+	r.Phone.Country = strings.TrimSpace(r.Phone.Country)
+	if r.Phone.Country == "" {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "phone.country",
+			Description: "phone country must not be empty.",
+		})
 	}
+
+	phone, err := e164.Parse(r.Phone.Number, r.Phone.Country)
+	if err != nil {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "phone.number",
+			Description: "phone number must be a valid number",
+		})
+	}
+	if !e164.IsValidNumber(phone) {
+		violations = append(violations, &edPb.BadRequest_FieldViolation{
+			Field:       "phone.number",
+			Description: "phone number must be a valid number",
+		})
+	}
+	r.Phone.Number = e164.Format(phone, e164.INTERNATIONAL)
 
 	if r.Mobile.Number != "" {
 		r.Mobile.Country = strings.TrimSpace(r.Mobile.Country)
@@ -583,6 +581,46 @@ func (r *CardReq) Validate() error {
 	}
 
 	return nil
+}
+
+type VCF struct {
+	Content string `json:"vcf"`
+}
+
+func (s *Service) GetMyVCFBusinessCardByID(ctx context.Context, id string) (*VCF, error) {
+	// claims := auth.ClaimsFromContext(ctx)
+
+	zlog := s.zlog.With(
+		zap.String("method", "GetMyVCFBusinessCardByID"),
+		// zap.String("username", claims.Code),
+		zap.String("id", id),
+	)
+
+	card, err := getCard(ctx, s.db, &CardQuery{
+		ID: id,
+		// EmployeeID: claims.ID,
+	})
+	if errors.Is(err, ErrCardNotFound) {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+	if err != nil {
+		zlog.Error("failed to get card by id", zap.Error(err))
+		return nil, err
+	}
+
+	if card.Status != StatusPublished {
+		return nil, rpcStatus.Error(codes.PermissionDenied, "You are not allowed to access this card or (it may not exist)")
+	}
+
+	byt, err := genVCF(card)
+	if err != nil {
+		zlog.Error("failed to gen vcf", zap.Error(err))
+		return nil, err
+	}
+
+	return &VCF{
+		Content: base64.StdEncoding.EncodeToString(byt),
+	}, nil
 }
 
 type Card struct {

@@ -17,10 +17,11 @@ const (
 )
 
 var statusNames = map[status]string{
-	StatusPending:   "PENDING",
-	StatusApproved:  "APPROVED",
-	StatusRejected:  "REJECTED",
-	StatusPublished: "PUBLISHED",
+	StatusUnspecified: "UNSPECIFIED",
+	StatusPending:     "PENDING",
+	StatusApproved:    "APPROVED",
+	StatusRejected:    "REJECTED",
+	StatusPublished:   "PUBLISHED",
 }
 
 var statusValues = map[string]status{
@@ -35,21 +36,20 @@ func (s status) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + s.String() + `"`), nil
 }
 
-func (s *status) UnmarshalJSON(b []byte) error {
-	if string(b) == "null" {
+func (s *status) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
 		return nil
 	}
 
-	if t, err := strconv.Atoi(string(b)); err == nil {
-		*s = status(t)
-		return nil
-	}
-
-	b = b[1 : len(b)-1]
-	if t, ok := statusValues[string(b)]; ok {
+	data = data[1 : len(data)-1]
+	if t, ok := statusValues[string(data)]; ok {
 		*s = t
 	}
 
+	if t, err := strconv.Atoi(string(data)); err == nil {
+		*s = status(t)
+		return nil
+	}
 	return nil
 }
 
