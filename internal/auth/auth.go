@@ -202,7 +202,7 @@ func (s *Auth) genToken(u *User) (*Token, error) {
 		Email:        u.email,
 		Phone:        u.phone,
 		Mobile:       u.mobile,
-		IsHR:         u.isHR,
+		IsHR:         u.IsHR,
 	}); err != nil {
 		return nil, fmt.Errorf("failed to set claims: %w", err)
 	}
@@ -251,7 +251,7 @@ func ContextWithClaims(ctx context.Context, claims *Claims) context.Context {
 }
 
 type User struct {
-	isHR         bool
+	IsHR         bool  `json:"isHR"`
 	ID           int64 `json:"id"`
 	managerID    int64
 	positionID   int64
@@ -317,7 +317,7 @@ func getUserByUsername(ctx context.Context, db *sql.DB, username string) (*User,
 		&u.phone,
 		&u.mobile,
 		&u.password,
-		&u.isHR,
+		&u.IsHR,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
