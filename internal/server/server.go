@@ -54,6 +54,7 @@ func (s *Server) Install(e *echo.Echo, mws ...echo.MiddlewareFunc) error {
 	v1.POST("/business-cards", s.createBusinessCard, mws...)
 	v1.PUT("/business-cards/:id", s.updateBusinessCard, mws...)
 	v1.GET("/business-cards/me", s.listMyBusinessCards, mws...)
+	v1.GET("/business-cards/me/vcf/:id", s.getMyVCFBusinessCardByID)
 	v1.GET("/business-cards/me/approval", s.listMyApprovalBusinessCards, mws...)
 	v1.GET("/business-cards/me/approval/:id", s.getMyApprovalBusinessCardByID, mws...)
 	v1.GET("/business-cards/me/:id", s.getMyBusinessCardByID, mws...)
@@ -142,7 +143,7 @@ func (s *Server) createBusinessCard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -159,7 +160,7 @@ func (s *Server) updateBusinessCard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -191,7 +192,7 @@ func (s *Server) getMyBusinessCardByID(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -223,7 +224,7 @@ func (s *Server) getBusinessCardByID(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -297,7 +298,7 @@ func (s *Server) approveBusinessCard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -314,7 +315,7 @@ func (s *Server) rejectBusinessCard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -331,7 +332,7 @@ func (s *Server) publishBusinessCard(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
 }
 
@@ -348,6 +349,15 @@ func (s *Server) getMyApprovalBusinessCardByID(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{
-		"card": card,
+		"businessCard": card,
 	})
+}
+
+func (s *Server) getMyVCFBusinessCardByID(c echo.Context) error {
+	vcf, err := s.card.GetMyVCFBusinessCardByID(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return err
+	}
+
+	return c.JSON(http.StatusOK, vcf)
 }
