@@ -23,6 +23,9 @@ func genVCF(card *Card) ([]byte, error) {
 	case 3:
 		displayName = fmt.Sprintf("%s;%s;;%s;", splitDisplayNames[2], splitDisplayNames[1], splitDisplayNames[0])
 
+	case 4:
+		displayName = fmt.Sprintf("%s;%s;;%s;", splitDisplayNames[3], splitDisplayNames[2], splitDisplayNames[0])
+
 	default:
 		displayName = card.DisplayName
 	}
@@ -65,6 +68,10 @@ func genVCF(card *Card) ([]byte, error) {
 
 	c.Set(vc.FieldTitle, &vc.Field{
 		Value: card.PositionName,
+	})
+
+	c.Set(vc.FieldURL, &vc.Field{
+		Value: "https://krungsrilaos.com",
 	})
 
 	buf := new(bytes.Buffer)
