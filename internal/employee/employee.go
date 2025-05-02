@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/10664kls/contactqr/internal/auth"
@@ -146,4 +148,18 @@ func (e *Employee) SetMobile(mobile string) {
 type ListEmployeesResult struct {
 	Employees     []*Employee `json:"employees"`
 	NextPageToken string      `json:"nextPageToken"`
+}
+
+func makeEmailFromDisplayName(originalEmail, employeeCode, displayName string) string {
+	displayName = strings.TrimSpace(displayName)
+	displayName = strings.ToLower(displayName)
+	switch ds := strings.Split(displayName, " "); len(ds) {
+	case 2:
+		displayName = fmt.Sprintf("%s.%s", ds[0], ds[1])
+
+	case 3:
+		displayName = fmt.Sprintf("%s.%s", ds[1], ds[2])
+	}
+
+	return strings.Replace(originalEmail, employeeCode, displayName, len(employeeCode))
 }

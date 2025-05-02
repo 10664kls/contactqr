@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/10664kls/contactqr/internal/pager"
@@ -88,11 +89,12 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 			"Departname",
 			"poid",
 			"Positionname",
-			"CONCAT(nameeng, ' ', surnameeng) AS display_name",
+			"nameeng",
+			"surnameeng",
 			"Emails",
 			"phone_number",
 			"mobile_number",
-			"approveby",
+			"COALESCE(approveby, 0) AS manager_id",
 			"createdate",
 		).
 		From("dbo.vm_employee").
@@ -110,6 +112,7 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 	employees := make([]*Employee, 0)
 	for rows.Next() {
 		var e Employee
+		var firstName, surname string
 		if err := rows.Scan(
 			&e.ID,
 			&e.Code,
@@ -119,7 +122,8 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 			&e.DepartmentName,
 			&e.PositionID,
 			&e.PositionName,
-			&e.DisplayName,
+			&firstName,
+			&surname,
 			&e.Email,
 			&e.Phone,
 			&e.Mobile,
@@ -128,6 +132,11 @@ func listEmployees(ctx context.Context, db *sql.DB, in *EmployeeQuery) ([]*Emplo
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
+
+		firstName = strings.TrimSpace(firstName)
+		surname = strings.TrimSpace(surname)
+		e.DisplayName = fmt.Sprintf("%s %s", firstName, surname)
+		e.Email = makeEmailFromDisplayName(e.Email, e.Code, e.DisplayName)
 		employees = append(employees, &e)
 	}
 
