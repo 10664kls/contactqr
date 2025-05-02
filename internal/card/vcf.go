@@ -15,11 +15,7 @@ func genVCF(card *Card) ([]byte, error) {
 	})
 
 	var displayName string
-	fmt.Println("card.DisplayName: ", card.DisplayName)
 	splitDisplayNames := strings.Split(strings.TrimSpace(card.DisplayName), " ")
-
-	fmt.Println("splitDisplayNames: ", splitDisplayNames)
-	fmt.Println("len: ", len(splitDisplayNames))
 	switch ln := len(splitDisplayNames); ln {
 	case 2:
 		displayName = fmt.Sprintf("%s;%s;;;", splitDisplayNames[1], splitDisplayNames[0])
