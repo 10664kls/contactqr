@@ -11,7 +11,7 @@ import (
 func genVCF(card *Card) ([]byte, error) {
 	c := make(vc.Card, 0)
 	c.Set(vc.FieldVersion, &vc.Field{
-		Value: "2.0",
+		Value: "2.1",
 	})
 
 	var displayName string
